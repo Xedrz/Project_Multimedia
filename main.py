@@ -1,65 +1,90 @@
-"""
-Program utama untuk menjalankan game gesture tangan.
-"""
-
+from ursina import *
 import cv2
-import time
-import numpy as np
-from gesture_detector import GestureDetector
-from challenge_manager import ChallengeManager
+from hand_detection import HandDetector
+from game_controls import move_entity_with_hand, apply_gesture_action
 
-def draw_text(frame, text, position, color=(255, 255, 255), size=1.2, thickness=2):
-    """
-    Menampilkan teks pada frame.
-    Args:
-        frame (np.array): Frame dari webcam.
-        text (str): Teks yang akan ditampilkan.
-        position (tuple): Posisi (x, y) teks.
-        color (tuple): Warna teks.
-        size (float): Ukuran font.
-        thickness (int): Ketebalan font.
-    """
-    cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
+# Setup aplikasi
+app = Ursina()
+detector = HandDetector()
+cap = cv2.VideoCapture(0)
 
-def main():
-    """
-    Fungsi utama untuk menjalankan filter game gesture tangan.
-    """
-    cap = cv2.VideoCapture(0)
-    gesture = GestureDetector()
-    challenge = ChallengeManager()
+# Asset jalan 3D
+roads = [
+    Entity(model='source/g.glb', scale=(1, 1, 1), position=(0, -2, 10), rotation=(0, 180, 0), color=color.white),
+    Entity(model='source/g.glb', scale=(1, 1, 1), position=(0, -2, 20), rotation=(0, 180, 0), color=color.white)
+]
 
-    last_pass = time.time()
+# Player
+player = Entity(
+    model='cube',
+    scale=1,
+    position=(0, -1.5, 10),
+    color=color.azure
+)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+# Emoji player (akan diganti berdasarkan target gesture)
+emoji_display = Entity(
+    parent=player,
+    model='quad',
+    texture='thumb.png',
+    scale=(0.5, 0.5),
+    position=(0, 1, 0)
+)
 
-        frame = cv2.flip(frame, 1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        landmarks = gesture.detect(rgb)
+# Daftar urutan gesture
+gesture_sequence = ["peace", "thumbs_up", "stop", "fist", "one_finger_up"]
+gesture_textures = {
+    "peace": 'two.png',
+    "thumbs_up": 'thumb.png',
+    "stop": 'stop.png',
+    "fist": 'fist.png',
+    "one_finger_up": 'one.png'
+}
+gesture_index = 0
+road_speed = 0.3
 
-        current_challenge = challenge.get_current_challenge()
-        matched = gesture.match_gesture(landmarks, current_challenge)
+def update():
+    global gesture_index
+    ret, frame = cap.read()
+    if not ret:
+        return
 
-        draw_text(frame, f"Rintangan: {current_challenge}", (50, 50), (0, 255, 255), 1.5)
+    gesture, hand_pos = detector.get_hand_data(frame)
 
-        if matched:
-            draw_text(frame, "✅ Lolos!", (50, 100), (0, 255, 0), 1.2)
-            if time.time() - last_pass > 2:
-                challenge.new_challenge()
-                last_pass = time.time()
+    if gesture:
+        apply_gesture_action(player, gesture)
+        if gesture == gesture_sequence[gesture_index]:
+            gesture_index += 1
+            if gesture_index >= len(gesture_sequence):
+                gesture_index = 0  # Game selesai / restart
+            else:
+                emoji_display.texture = gesture_textures[gesture_sequence[gesture_index]]
         else:
-            draw_text(frame, "❌ Coba lagi", (50, 100), (0, 0, 255), 1.2)
+            gesture_index = 0
+            emoji_display.texture = gesture_textures[gesture_sequence[0]]
 
-        cv2.imshow("Gesture Challenge Game", frame)
+    # Gerakkan jalan
+    for road in roads:
+        road.z -= road_speed
+        if road.z < -10:
+            road.z = 20
+    
+    player.z = roads[0].z
+    player.x = 0
+    player.y = -1.5
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
 
-    cap.release()
-    cv2.destroyAllWindows()
+    # Tampilkan frame webcam
+    cv2.imshow("Webcam Feed", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        cap.release()
+        cv2.destroyAllWindows()
+        application.quit()
 
-if __name__ == "__main__":
-    main()
+def input(key):
+    if key == 'escape':
+        cap.release()
+        cv2.destroyAllWindows()
+        application.quit()
+
+app.run()
