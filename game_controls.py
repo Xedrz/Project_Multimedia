@@ -1,4 +1,3 @@
-
 from ursina import *
 
 def move_entity_with_hand(entity, hand_position, screen_size):
@@ -18,9 +17,9 @@ def apply_gesture_action(entity, gesture):
     if gesture == "thumbs_up":
         entity.y += 0.1  # Lompat
     elif gesture == "peace":
-        entity.color = color.random_color()
+        entity.color = color.green  # Perbaikan di sini (tanpa tanda kurung)
     elif gesture == "fist":
-        entity.rotation_z += 2  # Berputar
+        entity.color = color.pink  # Perbaikan di sini
     elif gesture == "open_palm":
         entity.scale = (1, 1, 1)  # Reset skala
     elif gesture == "one_finger_up":
