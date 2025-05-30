@@ -1,50 +1,94 @@
+# main.py
 from ursina import *
 import cv2
-import time
+import random
+import threading
 from hand_detection import HandDetector
-from game_controls import move_entity_with_hand, apply_gesture_action
 
-# Setup aplikasi
 app = Ursina()
+
+# Kamera sedikit miring dan di kanan jalan
+camera.rotation_x = 5
+camera.rotation_y = -20
+camera.position = (4, 3, -12)
+
+# Hand detector dan webcam
 detector = HandDetector()
 cap = cv2.VideoCapture(0)
 
-# Asset jalan 3D
+# Set resolusi lebih rendah untuk mengurangi lag
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+
+gesture_result = None
+gesture_frame = None
+
+# Thread loop untuk webcam
+def webcam_loop():
+    global gesture_result, gesture_frame
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        gesture, _, annotated = detector.get_hand_data(frame)
+        gesture_result = gesture
+        gesture_frame = annotated
+
+# Mulai thread webcam
+threading.Thread(target=webcam_loop, daemon=True).start()
+
+# Gesture dan tekstur emoji
+gesture_textures = {
+    "peace": 'assets/two.png',
+    "thumbs_up": 'assets/thumb.png',
+    "stop": 'assets/stop.png',
+    "fist": 'assets/fist.png',
+    "one_finger_up": 'assets/one.png'
+}
+
+gesture_sequence = list(gesture_textures.keys())
+colors = [color.green, color.blue, color.yellow, color.orange, color.pink]
+
+# Jalan
 roads = [
-    Entity(model='source/g.glb', scale=(1, 1, 1), position=(0, -2, 10), rotation=(0, 180, 0), color=color.white),
-    Entity(model='source/g.glb', scale=(1, 1, 1), position=(0, -2, 20), rotation=(0, 180, 0), color=color.white)
+    Entity(model='source/g.glb', scale=(1,0.1,50), position=(0,-2,10), color=color.gray),
+    Entity(model='source/g.glb', scale=(1,0.1,50), position=(0,-2,60), color=color.gray)
 ]
 
 # Player
 player = Entity(
-    model='cube',
-    scale=1,
-    position=(0, -1.5, 10),
-    color=color.azure
+    model='sphere',
+    scale=2,
+    position=(0,0,0),
+    collider='box'
 )
 
-# Timer cube yang mendekati layar
-timer_cube = Entity(
-    model='cube',
-    scale=0.5,
-    position=(0, 0, 20),
-    color=color.red
-)
+# Musuh
+enemies = []
+musuh_posisi = [
+    (0, 0, 100),
+    (0, 0, 200),
+    (0, 0, 300),
+    (0, 0, 400),
+    (0, 0, 500)
+]
+for i, gesture in enumerate(gesture_sequence):
+    enemy = Entity(
+        model='quad',
+        texture=gesture_textures[gesture],
+        scale=4,
+        position=musuh_posisi[i],
+        collider='box',
+        name=gesture
+    )
+    enemies.append(enemy)
 
-# Emoji target display
-target_display = Entity(
-    parent=camera.ui,
-    model='quad',
-    texture='thumb.png',
-    scale=(0.15, 0.15),
-    position=(0, 0.4, 0)
-)
-
-# Text display
+# UI
 instruction_text = Text(
-    text="Follow the gesture!",
+    text="Tiru gesture musuh!",
     parent=camera.ui,
-    position=(0, 0.3, 0),
+    position=(0,0.45),
+    origin=(0,0),
     scale=1.5,
     color=color.white
 )
@@ -52,135 +96,78 @@ instruction_text = Text(
 win_text = Text(
     text="",
     parent=camera.ui,
-    position=(0, 0, 0),
+    position=(0,0),
     scale=3,
     color=color.green,
     enabled=False
 )
 
-# Daftar urutan gesture
-gesture_sequence = ["peace", "thumbs_up", "stop", "fist", "one_finger_up"]
-gesture_textures = {
-    "peace": 'two.png',
-    "thumbs_up": 'thumb.png',
-    "stop": 'stop.png',
-    "fist": 'fist.png',
-    "one_finger_up": 'one.png'
-}
+current_enemy_index = 0
+player_speed = 0.01
+world_speed = 0.2
+win = False
 
-# Game variables
-gesture_index = 0
-road_speed = 0.3
-game_completed = False
-win_animation_time = 0
-last_gesture_time = 0
-timer_speed = 0.1
-timer_active = True
-timer_reset_z = 20
-timer_warning_z = 5
-
-def reset_timer():
-    global timer_speed, timer_active
-    timer_cube.z = timer_reset_z
-    timer_speed = 0.1 + (gesture_index * 0.05)  # Makin sulit makin cepat
-    timer_active = True
+def apply_gesture_effect(entity, gesture):
+    if gesture == "thumbs_up":
+        entity.y += 0.2
+        entity.color = color.green
+    elif gesture == "peace":
+        entity.color = random.choice(colors)
+        entity.rotation_y += 15
+    elif gesture == "fist":
+        entity.scale = (1.2, 1.2, 1.2)
+        entity.color = color.red
+    elif gesture == "one_finger_up":
+        entity.rotation_x += 15
+        entity.color = color.blue
+    elif gesture == "stop":
+        entity.scale = (0.8, 0.8, 0.8)
+        entity.color = color.yellow
 
 def update():
-    global gesture_index, game_completed, win_animation_time, last_gesture_time, timer_speed, timer_active
-    
-    ret, frame = cap.read()
-    if not ret:
-        print("Failed to capture frame from camera")
-        return
+    global current_enemy_index, win
 
-    try:
-        # Tracking tangan
-        gesture, hand_pos = detector.get_hand_data(frame)
-        
-        # Gambar landmark tangan di frame
-        if hand_pos:
-            cv2.circle(frame, hand_pos, 10, (0, 255, 0), -1)
-            move_entity_with_hand(player, hand_pos, (frame.shape[1], frame.shape[0]))
+    # Jalan bergerak
+    for road in roads:
+        road.z -= world_speed
+        if road.z < -30:
+            road.z += 100
 
-        if not game_completed:
-            # Update timer cube
-            if timer_active:
-                timer_cube.z -= timer_speed * time.dt * 60
-                
-                # Cek jika timer cube sudah mencapai layar (z <= 0)
-                if timer_cube.z <= 0:
-                    # Reset ke step 1 jika gagal
-                    gesture_index = 0
-                    target_display.texture = gesture_textures[gesture_sequence[0]]
-                    instruction_text.text = f"Too slow! Back to Gesture 1/{len(gesture_sequence)}"
-                    reset_timer()
-                
-                # Ubah warna jadi kuning saat mendekati deadline
-                if timer_cube.z < timer_warning_z:
-                    timer_cube.color = color.yellow
-                else:
-                    timer_cube.color = color.red
+    # Musuh bergerak
+    for enemy in enemies:
+        enemy.z -= world_speed
 
-            if gesture:
-                current_time = time.time()
-                
-                # Cooldown untuk menghindari deteksi berulang terlalu cepat
-                if current_time - last_gesture_time > 0.5:
-                    if gesture == gesture_sequence[gesture_index]:
-                        # Berhasil melakukan gesture yang benar
-                        gesture_index += 1
-                        last_gesture_time = current_time
-                        
-                        if gesture_index >= len(gesture_sequence):
-                            # Game selesai
-                            game_completed = True
-                            win_text.text = "WIN!!!"
-                            win_text.enabled = True
-                            target_display.enabled = False
-                            instruction_text.enabled = False
-                            timer_cube.enabled = False
-                        else:
-                            # Lanjut ke gesture berikutnya
-                            target_display.texture = gesture_textures[gesture_sequence[gesture_index]]
-                            instruction_text.text = f"Gesture {gesture_index+1}/{len(gesture_sequence)}"
-                            reset_timer()
-                    else:
-                        # Gesture salah
-                        instruction_text.text = f"Wrong gesture! Try again: {gesture_sequence[gesture_index]}"
-        else:
-            # Animasi WIN berputar
-            win_animation_time += time.dt
-            win_text.rotation_z = sin(win_animation_time * 2) * 10
-            win_text.scale = 3 + sin(win_animation_time * 3) * 0.5
+    # Player tetap bergerak sedikit
+    player.z += player_speed
 
-        # Gerakkan jalan
-        for road in roads:
-            road.z -= road_speed
-            if road.z < -10:
-                road.z = 20
-        
-        player.z = roads[0].z
-        player.y = -1.5
+    # Deteksi gesture saat mendekati musuh
+    if current_enemy_index < len(enemies):
+        current_enemy = enemies[current_enemy_index]
+        if abs(player.z - current_enemy.z) < 1:
+            if gesture_result == current_enemy.name:
+                apply_gesture_effect(player, gesture_result)
+                current_enemy.enabled = False
+                current_enemy_index += 1
+            else:
+                instruction_text.text = f"Tunjukkan: {current_enemy.name}"
 
-        # Tampilkan frame webcam dengan tracking
-        cv2.imshow("Hand Tracking", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            cap.release()
-            cv2.destroyAllWindows()
-            application.quit()
-
-    except Exception as e:
-        print(f"Error in update loop: {e}")
+            # Tampilkan frame gesture (opsional)
+            if gesture_frame is not None:
+                cv2.imshow("Hand", gesture_frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    cap.release()
+                    cv2.destroyAllWindows()
+                    application.quit()
+    else:
+        if not win:
+            win = True
+            win_text.text = "BERHASIL!"
+            win_text.enabled = True
 
 def input(key):
-    if key == 'escape' or key == 'q':
+    if key == 'escape':
         cap.release()
         cv2.destroyAllWindows()
         application.quit()
-
-# Inisialisasi game
-reset_timer()
-target_display.texture = gesture_textures[gesture_sequence[0]]
-instruction_text.text = f"Gesture 1/{len(gesture_sequence)}"
 
 app.run()

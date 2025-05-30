@@ -1,28 +1,24 @@
 from ursina import *
-
-def move_entity_with_hand(entity, hand_position, screen_size):
-    """
-    Gerakkan entitas berdasarkan posisi tangan.
-    """
-    if hand_position:
-        x_ratio = hand_position[0] / screen_size[0]
-        y_ratio = hand_position[1] / screen_size[1]
-        entity.x = (x_ratio - 0.5) * 8
-        entity.y = (0.5 - y_ratio) * 6
+import random
 
 def apply_gesture_action(entity, gesture):
     """
     Tindakan game berdasarkan gesture.
     """
+    colors = [color.green, color.blue, color.yellow, color.orange, color.pink]
+    
     if gesture == "thumbs_up":
-        entity.y += 0.1  # Lompat
+        entity.y += 0.2
+        entity.color = color.green
     elif gesture == "peace":
-        entity.color = color.green  # Perbaikan di sini (tanpa tanda kurung)
+        entity.color = random.choice(colors)
+        entity.rotation_y += 15
     elif gesture == "fist":
-        entity.color = color.pink  # Perbaikan di sini
-    elif gesture == "open_palm":
-        entity.scale = (1, 1, 1)  # Reset skala
+        entity.scale = (1.2, 1.2, 1.2)
+        entity.color = color.red
     elif gesture == "one_finger_up":
-        entity.rotation_y += 5
-    elif gesture == "point":
-        entity.scale_x = 1.5
+        entity.rotation_x += 15
+        entity.color = color.blue
+    elif gesture == "stop":
+        entity.scale = (0.8, 0.8, 0.8)
+        entity.color = color.yellow
