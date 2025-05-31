@@ -71,7 +71,7 @@ gesture-mimic-game/
 └── README.md # Dokumentasi proyek
 ```
 
-## 🚀 Cara Menjalankan
+## 🚀 Cara Menjalankan Program
 
 1. **Clone repository ini**
 
