@@ -4,6 +4,11 @@
 
 Sebuah game interaktif berbasis gesture tangan menggunakan **Ursina Engine** dan **OpenCV**, di mana pemain diminta untuk menirukan gesture yang ditampilkan oleh musuh dalam waktu terbatas.
 
+# Dibuat oleh:
+- Jonathan Jethro - 122140213 (14684949)
+- M. Rizqullah Bimo - 122140220 (117525910)
+- Felix Ignasius Sinaga - 121140146 (116411171)
+
 ## 📘 Logbook Proyek
 
 ### 🗓️ Minggu 1 – Menentukan Ide
